@@ -2,6 +2,8 @@ import time
 import datetime
 import random
 import boto3
+import argparse
+
 
 
 def random_country():
@@ -66,19 +68,24 @@ def do_dynamo_read(client, table, hash_key):
                                                                                        units_used))
 
 
-def main():
+def main(args):
 
     # Input CLI parameters
-    stress_type = "read"
-    region = "eu-west-1"
-    table = "MyTable2"
-    hash_key = "MyKey"
-    units_per_second = 5
-    test_duration = 10
+    stress_type = args.stress_type
+    region = args.table_region
+    table = args.table_name
+    hash_key = args.hash_key
+    units_per_second = args.units_per_second
+    test_duration = args.test_duration
 
     # Connect to the DynamoDB Service
-    ddb_client = boto3.client('dynamodb', region_name=region)
+    if args.aws_profile:
+        session = boto3.Session(profile_name=args.aws_profile)
+        ddb_client = session.client('dynamodb', region_name=region)
+    else:
+        ddb_client = boto3.client('dynamodb', region_name=region)
 
+    # Start the requested test
     if stress_type == "write":
         stress_test(units_per_second, test_duration, do_dynamo_write, 'writes', ddb_client, table, hash_key)
     elif stress_type == "read":
@@ -115,4 +122,16 @@ def stress_test(count_per_interval, duration, func, stress_type, ddb_client, tab
     print("Stress test ended at {} after {} seconds".format(get_current_time(), duration))
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(
+        description="Runs a stress tests against a DynamoDB table at a specified unit consumption rate.",
+    )
+    parser.add_argument("--stress-type", "-t", required=True, help="Type of stress test to perform, either 'read' or 'write'.")
+    parser.add_argument("--table-region", "-r", required=True, help="Region where the table is located.")
+    parser.add_argument("--table-name", "-n", required=True, help="Table name to write or read data from.")
+    parser.add_argument("--hash-key", "-k", required=True, help="Hash Key of the table, only compatible with type 'S'.")
+    parser.add_argument("--units-per-second", "-u", type=int, default=5, help="Amount of units per second that we should attempt to consume.")
+    parser.add_argument("--test-duration", "-d", type=int, default=60, help="Duration the test should go on for.")
+    parser.add_argument("--aws-profile", help="Profile name to use for the boto3 client.")
+    args = parser.parse_args()
+
+    main(args)
