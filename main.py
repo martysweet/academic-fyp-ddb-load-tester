@@ -8,6 +8,7 @@ def random_country():
     lines = open("countries.txt").read().splitlines()
     return random.choice(lines)
 
+
 def get_current_time():
     return time.time() + datetime.timedelta(days=3).total_seconds()
 
@@ -68,22 +69,25 @@ def do_dynamo_read(client, table, hash_key):
 def main():
 
     # Input CLI parameters
+    stress_type = "read"
     region = "eu-west-1"
     table = "MyTable2"
     hash_key = "MyKey"
-    wps = 5
-    thread_count = 2 # TODO: Implement CSP
-    duration = 10
+    units_per_second = 5
+    test_duration = 10
 
     # Connect to the DynamoDB Service
     ddb_client = boto3.client('dynamodb', region_name=region)
 
-    for i in range(0, 999): # TODO: Implement into threads?
-        stress_test(wps, duration, do_dynamo_write, 'writes', ddb_client, table, hash_key)
-        stress_test(wps, duration, do_dynamo_read, 'reads', ddb_client, table, hash_key)
+    if stress_type == "write":
+        stress_test(units_per_second, test_duration, do_dynamo_write, 'writes', ddb_client, table, hash_key)
+    elif stress_type == "read":
+        stress_test(units_per_second, test_duration, do_dynamo_read, 'reads', ddb_client, table, hash_key)
+    else:
+        print("Unknown stress type, use 'read' or 'write'.")
 
 
-def stress_test(count_per_interval, duration, func, type, ddb_client, table, hash_key):
+def stress_test(count_per_interval, duration, func, stress_type, ddb_client, table, hash_key):
     # Set parameters for the stress loop
     count = 0
     time_interval = 1
@@ -102,13 +106,13 @@ def stress_test(count_per_interval, duration, func, type, ddb_client, table, has
             last_operation_time = get_current_time()
             count += 1
         elif time_diff > time_interval:
-            print("Completed {} {} in {} seconds. Target is {}.\n".format(count, type, time_interval, count_per_interval))
+            print("Completed {} {} in {} seconds. Target is {}.\n".format(count, stress_type, time_interval, count_per_interval))
             last_operation_time = interval_start_time = get_current_time()
             count = 0
         else:
             time.sleep(0.1)
 
-    print("Stress test ended at {}".format(get_current_time()))
+    print("Stress test ended at {} after {} seconds".format(get_current_time(), duration))
 
 if __name__ == '__main__':
     main()
