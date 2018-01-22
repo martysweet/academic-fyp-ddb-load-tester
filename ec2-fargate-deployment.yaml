@@ -1,0 +1,205 @@
+AWSTemplateFormatVersion: 2010-09-09
+Resources:
+
+  LogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: "/ecs/fyp-ddb-load-tester"
+
+  ECRRepository:
+    Type: "AWS::ECR::Repository"
+    Properties:
+      RepositoryName: "fyp-ddb-stress-test"
+
+  TaskDefinition:
+    Type: "AWS::ECS::TaskDefinition"
+    Properties:
+      Cpu: "256"
+      Memory: "0.5GB"
+      NetworkMode: "awsvpc"
+      ExecutionRoleArn: !Ref FargateExecutionRole
+      TaskRoleArn: !Ref FargateDDBTaskRole
+      RequiresCompatibilities:
+        - "FARGATE"
+      ContainerDefinitions:
+        - Name: "fyp-ddb-stress-test"
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/fyp-ddb-stress-test"
+          WorkingDirectory: /tmp/workdir
+          Essential: "true"
+          Environment:
+            - Name: STRESS_TYPE
+              Value: read
+            - Name: TABLE_REGION
+              Value: us-east-1
+            - Name: TABLE_NAME
+              Value: MyTable2
+            - Name: HASH_KEY
+              Value: MyKey
+            - Name: UNITS
+              Value: 5
+            - Name: DURATION
+              Value: 300
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/fyp-ddb-load-tester
+              awslogs-region: us-east-1
+              awslogs-stream-prefix: ecs
+
+  LoadTestLauncher:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Handler: "index.lambda_handler"
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: !Sub |
+          from __future__ import print_function
+          import json
+          import boto3
+          ecs = boto3.client('ecs', region_name='us-east-1')
+          def lambda_handler(event, context):
+              print("Received event: " + json.dumps(event, indent=2))
+              try:
+                  response = ecs.run_task(
+                      cluster='default',
+                      taskDefinition='fargate-test-2-TaskDefinition-1850921BJS14U:1',
+                      overrides={
+                          'containerOverrides': [
+                              {
+                                  'name': 'fyp-ddb-stress-test',
+                                  'environment': [
+                                      {
+                                          'name': 'STRESS_TYPE',
+                                          'value': str(event['stressType'])
+                                      },
+                                      {
+                                          'name': 'TABLE_REGION',
+                                          'value': str(event['tableRegion'])
+                                      },
+                                      {
+                                          'name': 'TABLE_NAME',
+                                          'value': str(event['tableName'])
+                                      },
+                                      {
+                                          'name': 'HASH_KEY',
+                                          'value': str(event['hashKey'])
+                                      },
+                                      {
+                                          'name': 'UNITS',
+                                          'value': str(event['units'])
+                                      },
+                                      {
+                                          'name': 'DURATION',
+                                          'value': str(event['duration'])
+                                      },
+                                  ]
+                              },
+                          ]
+                      },
+                      launchType='FARGATE',
+                      platformVersion='LATEST',
+                      networkConfiguration={
+                          'awsvpcConfiguration': {
+                              'subnets': [
+                                  'subnet-e9bce68d',
+                              ],
+                              'securityGroups': [
+                                  'sg-b04549c4',
+                              ],
+                              'assignPublicIp': 'DISABLED'
+                          }
+                      }
+                  )
+                  print(response)
+                  return True
+              except Exception as e:
+                  print(e)
+                  message = 'Error starting task'
+                  print(message)
+                  raise Exception(message)
+
+      Runtime: "python3.6"
+      Timeout: "25"
+
+
+  FargateExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: ecs-tasks.amazonaws.com
+          Action: sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: root
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+              - "ecr:GetAuthorizationToken"
+              - "ecr:BatchCheckLayerAvailability"
+              - "ecr:GetDownloadUrlForLayer"
+              - "ecr:BatchGetImage"
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - "dynamodb:GetItem"
+              - "dynamodb:PutItem"
+            Resource: "*"
+
+  FargateDDBTaskRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      Path: "/"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: ecs-tasks.amazonaws.com
+          Action: sts:AssumeRole
+      Policies:
+      - PolicyName: root
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+              - "dynamodb:GetItem"
+              - "dynamodb:PutItem"
+            Resource: "*"
+
+  LambdaExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+              - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: root
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+              - "logs:*"
+              - "ecs:RunTask"
+            Resource: "*"
+          - Effect: Allow
+            Action: "iam:PassRole"
+            Resource:
+              - !GetAtt FargateDDBTaskRole.Arn
+              - !GetAtt FargateExecutionRole.Arn
