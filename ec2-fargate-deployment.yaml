@@ -34,7 +34,7 @@ Resources:
         - "FARGATE"
       ContainerDefinitions:
         - Name: "fyp-ddb-stress-test"
-          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/fyp-ddb-stress-test"
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/fyp-ddb-stress-test:latest"
           WorkingDirectory: /tmp/workdir
           Essential: "true"
           Environment:

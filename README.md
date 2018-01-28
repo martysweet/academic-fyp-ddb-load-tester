@@ -9,7 +9,7 @@
 ## Building the Docker Image and pushing to ECR
 
 ```
-docker build -t ddb-stress-test .
+docker build -t fyp-ddb-stress-test .
 docker tag fyp-ddb-stress-test AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/fyp-ddb-stress-test
 
 aws ecr get-login --no-include-email --region us-east-1
