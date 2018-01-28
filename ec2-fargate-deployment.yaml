@@ -1,4 +1,15 @@
 AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+
+  TaskSubnet:
+    Type: AWS::EC2::Subnet::Id
+    Description: "Subnet to launch the task into"
+
+  TaskSg:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: "SG to attach to the task"
+
 Resources:
 
   LogGroup:
@@ -23,27 +34,27 @@ Resources:
         - "FARGATE"
       ContainerDefinitions:
         - Name: "fyp-ddb-stress-test"
-          Image: !Sub "${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/fyp-ddb-stress-test"
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/fyp-ddb-stress-test"
           WorkingDirectory: /tmp/workdir
           Essential: "true"
           Environment:
-            - Name: STRESS_TYPE
-              Value: read
+            - Name: WRITE_STRESS_CONFIG
+              Value: "-sw -wcu 5"
+            - Name: READ_STRESS_CONFIG
+              Value: "-sr -rcu 5"
             - Name: TABLE_REGION
               Value: us-east-1
             - Name: TABLE_NAME
               Value: MyTable2
             - Name: HASH_KEY
               Value: MyKey
-            - Name: UNITS
-              Value: 5
             - Name: DURATION
               Value: 300
           LogConfiguration:
             LogDriver: awslogs
             Options:
               awslogs-group: /ecs/fyp-ddb-load-tester
-              awslogs-region: us-east-1
+              awslogs-region: !Ref "AWS::Region"
               awslogs-stream-prefix: ecs
 
   LoadTestLauncher:
@@ -56,21 +67,56 @@ Resources:
           from __future__ import print_function
           import json
           import boto3
-          ecs = boto3.client('ecs', region_name='us-east-1')
+
+          ecs = boto3.client('ecs', region_name='${AWS::Region}')
+
           def lambda_handler(event, context):
+
+              # Log the received event
               print("Received event: " + json.dumps(event, indent=2))
+
+              # Check we have the required event properties to continue
+              expected_fields = ["tableRegion", "tableName", "hashKey", "duration"]
+              for f in expected_fields:
+                  if f not in event:
+                      print("Expecting field {} in event data. Exiting.".format(f))
+                      exit(1)
+
+              read_stress_config = ""
+              write_stress_config = ""
+
+              if "stressRead" in event and event["stressRead"] is True:
+                  if "rcu" not in event:
+                      print("Expecting rcu in event data. Exiting.".format(f))
+                      exit(1)
+                  read_stress_config = "-sr -rcu {}".format(event["rcu"])
+
+              if "stressWrite" in event and event["stressWrite"] is True:
+                  if "rcu" not in event:
+                      print("Expecting wcu in event data. Exiting.".format(f))
+                      exit(1)
+                  write_stress_config = "-sw -wcu {}".format(event["wcu"])
+
+              if read_stress_config == "" and write_stress_config == "":
+                  print("No stressRead or stressWrite flags given")
+                  exit(1)
+
               try:
                   response = ecs.run_task(
                       cluster='default',
-                      taskDefinition='fargate-test-2-TaskDefinition-1850921BJS14U:1',
+                      taskDefinition='${TaskDefinition}',
                       overrides={
                           'containerOverrides': [
                               {
                                   'name': 'fyp-ddb-stress-test',
                                   'environment': [
                                       {
-                                          'name': 'STRESS_TYPE',
-                                          'value': str(event['stressType'])
+                                          'name': 'WRITE_STRESS_CONFIG',
+                                          'value': str(write_stress_config)
+                                      },
+                                      {
+                                          'name': 'READ_STRESS_CONFIG',
+                                          'value': str(read_stress_config)
                                       },
                                       {
                                           'name': 'TABLE_REGION',
@@ -85,10 +131,6 @@ Resources:
                                           'value': str(event['hashKey'])
                                       },
                                       {
-                                          'name': 'UNITS',
-                                          'value': str(event['units'])
-                                      },
-                                      {
                                           'name': 'DURATION',
                                           'value': str(event['duration'])
                                       },
@@ -101,10 +143,10 @@ Resources:
                       networkConfiguration={
                           'awsvpcConfiguration': {
                               'subnets': [
-                                  'subnet-e9bce68d',
+                                  '${TaskSubnet}',
                               ],
                               'securityGroups': [
-                                  'sg-b04549c4',
+                                  '${TaskSg}',
                               ],
                               'assignPublicIp': 'ENABLED'
                           }

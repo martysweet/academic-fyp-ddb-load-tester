@@ -13,4 +13,4 @@ COPY countries.txt /tmp/workdir
 
 RUN pip install -r requirements.txt
 
-ENTRYPOINT python main.py -t ${STRESS_TYPE} -r ${TABLE_REGION} -n ${TABLE_NAME} -k ${HASH_KEY} -u ${UNITS} -d ${DURATION}
+ENTRYPOINT python main.py ${WRITE_STRESS_CONFIG} ${READ_STRESS_CONFIG} -r ${TABLE_REGION} -n ${TABLE_NAME} -k ${HASH_KEY} -d ${DURATION}
