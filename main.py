@@ -3,7 +3,7 @@ import datetime
 import random
 import boto3
 import argparse
-
+import threading
 
 
 def random_country():
@@ -71,11 +71,14 @@ def do_dynamo_read(client, table, hash_key):
 def main(args):
 
     # Input CLI parameters
-    stress_type = args.stress_type
+    stress_read = args.stress_read
+    stress_write = args.stress_write
+    rcu = args.read_capacity
+    wcu = args.write_capacity
+
     region = args.table_region
     table = args.table_name
     hash_key = args.hash_key
-    units_per_second = args.units_per_second
     test_duration = args.test_duration
 
     # Connect to the DynamoDB Service
@@ -85,13 +88,29 @@ def main(args):
     else:
         ddb_client = boto3.client('dynamodb', region_name=region)
 
+    # Initialise the thread vars
+    w_thread = None
+    r_thread = None
+
     # Start the requested test
-    if stress_type == "write":
-        stress_test(units_per_second, test_duration, do_dynamo_write, 'writes', ddb_client, table, hash_key)
-    elif stress_type == "read":
-        stress_test(units_per_second, test_duration, do_dynamo_read, 'reads', ddb_client, table, hash_key)
-    else:
-        print("Unknown stress type, use 'read' or 'write'.")
+    if stress_write:
+        w_thread = threading.Thread(target=stress_test, args=[wcu, test_duration, do_dynamo_write, 'writes', ddb_client, table, hash_key])
+        w_thread.start()
+
+    if stress_read:
+        r_thread = threading.Thread(target=stress_test, args=[rcu, test_duration, do_dynamo_read, 'reads', ddb_client, table, hash_key])
+        r_thread.start()
+
+    # Join the threads
+    # TODO: Allow this to work nicely with CTRL + C
+    if w_thread:
+        w_thread.join()
+
+    if r_thread:
+        r_thread.join()
+
+    # End of program
+    print("End of program, if nothing happened be sure to provide switches -sr or -sw.")
 
 
 def stress_test(count_per_interval, duration, func, stress_type, ddb_client, table, hash_key):
@@ -119,17 +138,21 @@ def stress_test(count_per_interval, duration, func, stress_type, ddb_client, tab
         else:
             time.sleep(0.1)
 
-    print("Stress test ended at {} after {} seconds".format(get_current_time(), duration))
+    print("Test ended at {} after {} seconds".format(get_current_time(), duration))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description="Runs a stress tests against a DynamoDB table at a specified unit consumption rate.",
     )
-    parser.add_argument("--stress-type", "-t", required=True, help="Type of stress test to perform, either 'read' or 'write'.")
+    parser.add_argument("--stress-read", "-sr", action='store_true', help="Perform a read stress test")
+    parser.add_argument("--stress-write", "-sw", action='store_true', help="Perform a write stress test")
+    parser.add_argument("--read-capacity", "-rcu", type=int, default=5, help="Amount of read units per second that we should attempt to consume.")
+    parser.add_argument("--write-capacity", "-wcu", type=int, default=5, help="Amount of write units per second that we should attempt to consume.")
+
+    # All these parameters are common to both types of stress test
     parser.add_argument("--table-region", "-r", required=True, help="Region where the table is located.")
     parser.add_argument("--table-name", "-n", required=True, help="Table name to write or read data from.")
     parser.add_argument("--hash-key", "-k", required=True, help="Hash Key of the table, only compatible with type 'S'.")
-    parser.add_argument("--units-per-second", "-u", type=int, default=5, help="Amount of units per second that we should attempt to consume.")
     parser.add_argument("--test-duration", "-d", type=int, default=60, help="Duration the test should go on for.")
     parser.add_argument("--aws-profile", help="Profile name to use for the boto3 client.")
     args = parser.parse_args()
