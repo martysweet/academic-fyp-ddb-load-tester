@@ -106,7 +106,7 @@ Resources:
                               'securityGroups': [
                                   'sg-b04549c4',
                               ],
-                              'assignPublicIp': 'DISABLED'
+                              'assignPublicIp': 'ENABLED'
                           }
                       }
                   )
