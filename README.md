@@ -8,6 +8,7 @@ This service is a small DynamoDB load tester, which spins up a Fargate container
 
 - The task definition is specified inline with the CloudFormation Lambda function, this needs updating after each deployment
 - Subnet and security groups used in the Lambda Function code should be parameters 
+- Code is inline, you should probably be using SAM
 
 ## Building the Docker Image and pushing to ECR
 
