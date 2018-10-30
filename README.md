@@ -1,5 +1,8 @@
 # academic-fyp-ddb-load-tester
 
+A small fragment of my University final year project, which involved making a globally replicated DynamoDB table, in a time before DynamoDB Global Tables existed.
+
+This service is a small DynamoDB load tester, which spins up a Fargate container and performs read and write activity on the table.
 
 ## Issues
 
@@ -19,5 +22,5 @@ docker push AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/fyp-ddb-stress-test:l
 
 ## Updating Cloudformation from CLI
 ```
-aws cloudformation update-stack --stack-name fargate-test-2 --template-body file://ec2-fargate-deployment.yaml --region us-east-1 --profile martysweet-marty --capabilities CAPABILITY_IAM --parameters ParameterKey="TaskSubnet",UsePreviousValue=true ParameterKey="TaskSg",UsePreviousValue=true 
+aws cloudformation update-stack --stack-name fargate-test-2 --template-body file://ec2-fargate-deployment.yaml --region us-east-1  --capabilities CAPABILITY_IAM --parameters ParameterKey="TaskSubnet",UsePreviousValue=true ParameterKey="TaskSg",UsePreviousValue=true 
 ```
